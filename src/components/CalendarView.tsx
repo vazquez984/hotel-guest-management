@@ -1,0 +1,400 @@
+
+import { useEffect, useState, useCallback } from 'react';
+import { supabase, Appointment, Reservation, GuestEvent } from '../lib/supabase';
+import { Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
+import EditAppointmentModal from './EditAppointmentModal';
+import EditReservationModal from './EditReservationModal';
+import EditEventModal from './EditEventModal';
+
+/**
+ * Interface for a calendar event, which can be an appointment, reservation, or guest event.
+ * @interface CalendarEvent
+ * @property {string} id - The unique identifier of the event.
+ * @property {'appointment' | 'reservation' | 'event'} type - The type of the event.
+ * @property {string} title - The title or name of the event.
+ * @property {string} date - The date of the event in YYYY-MM-DD format.
+ * @property {string} time - The time of the event in HH:MM format.
+ * @property {string} guestName - The name of the guest associated with the event.
+ * @property {string} [status] - The status of the event (e.g., 'scheduled', 'confirmed').
+ * @property {boolean} [attended] - Whether the guest attended the event.
+ */
+interface CalendarEvent {
+  id: string;
+  type: 'appointment' | 'reservation' | 'event';
+  title: string;
+  date: string;
+  time: string;
+  guestName: string;
+  status?: string;
+  attended?: boolean;
+}
+
+/**
+ * A component that displays a calendar view of appointments, reservations, and guest events.
+ * It allows users to navigate between months, view event details, and edit or delete events.
+ * @returns {JSX.Element} The rendered calendar view component.
+ */
+export default function CalendarView() {
+  // State for the current date being displayed in the calendar.
+  const [currentDate, setCurrentDate] = useState(new Date());
+  // State for the list of all events to be displayed.
+  const [events, setEvents] = useState<CalendarEvent[]>([]);
+  // State to manage the loading status while fetching data.
+  const [loading, setLoading] = useState(true);
+  // State to hold the currently selected appointment for editing.
+  const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
+  // State to hold the currently selected reservation for editing.
+  const [selectedReservation, setSelectedReservation] = useState<Reservation | null>(null);
+  // State to hold the currently selected event for editing.
+  const [selectedEvent, setSelectedEvent] = useState<GuestEvent | null>(null);
+
+  /**
+   * Fetches all calendar data (appointments, reservations, events) for the current month
+   * from the Supabase database and formats it for display.
+   */
+  const loadCalendarData = useCallback(async () => {
+    try {
+      setLoading(true);
+      const startOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
+      const endOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
+
+      const startDate = startOfMonth.toISOString().split('T')[0];
+      const endDate = endOfMonth.toISOString().split('T')[0];
+
+      // Fetch all data in parallel for efficiency.
+      const [appointmentsRes, reservationsRes, eventsRes, guestsRes] = await Promise.all([
+        supabase
+          .from('appointments')
+          .select('*')
+          .gte('appointment_date', startDate)
+          .lte('appointment_date', endDate),
+        supabase
+          .from('reservations')
+          .select('*')
+          .gte('reservation_date', startDate)
+          .lte('reservation_date', endDate),
+        supabase
+          .from('guest_events')
+          .select('*')
+          .gte('event_date', startDate)
+          .lte('event_date', endDate),
+        supabase.from('guests').select('id, family_name')
+      ]);
+
+      const guests = guestsRes.data || [];
+      const guestMap = new Map(guests.map(g => [g.id, g.family_name]));
+
+      const calendarEvents: CalendarEvent[] = [];
+
+      // Format and add appointments to the events list.
+      (appointmentsRes.data || []).forEach((apt: Appointment) => {
+        calendarEvents.push({
+          id: apt.id,
+          type: 'appointment',
+          title: apt.title,
+          date: apt.appointment_date,
+          time: apt.appointment_time,
+          guestName: guestMap.get(apt.guest_id) || 'Unknown',
+          status: apt.status
+        });
+      });
+
+      // Format and add reservations to the events list.
+      (reservationsRes.data || []).forEach((res: Reservation) => {
+        calendarEvents.push({
+          id: res.id,
+          type: 'reservation',
+          title: `${res.venue_name} (${res.reservation_type})`,
+          date: res.reservation_date,
+          time: res.reservation_time,
+          guestName: guestMap.get(res.guest_id) || 'Unknown',
+          status: res.status
+        });
+      });
+
+      // Format and add guest events to the events list.
+      (eventsRes.data || []).forEach((evt: GuestEvent) => {
+        if (evt.event_date) {
+          calendarEvents.push({
+            id: evt.id,
+            type: 'event',
+            title: evt.event_name,
+            date: evt.event_date,
+            time: '00:00',
+            guestName: guestMap.get(evt.guest_id) || 'Unknown',
+            attended: evt.attended
+          });
+        }
+      });
+
+      // Sort events by date and time for ordered display.
+      calendarEvents.sort((a, b) => {
+        const dateCompare = a.date.localeCompare(b.date);
+        if (dateCompare !== 0) return dateCompare;
+        return a.time.localeCompare(b.time);
+      });
+
+      setEvents(calendarEvents);
+    } catch (error) {
+      console.error('Error loading calendar data:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [currentDate]);
+
+  // Effect to load calendar data when the component mounts or the date changes.
+  useEffect(() => {
+    loadCalendarData();
+  }, [loadCalendarData]);
+
+  /**
+   * Calculates the number of days in the current month and the starting day of the week.
+   * @param {Date} date - The date to calculate for.
+   * @returns {{daysInMonth: number, startingDayOfWeek: number}}
+   */
+  function getDaysInMonth(date: Date) {
+    const year = date.getFullYear();
+    const month = date.getMonth();
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    const daysInMonth = lastDay.getDate();
+    const startingDayOfWeek = firstDay.getDay();
+
+    return { daysInMonth, startingDayOfWeek };
+  }
+
+  /**
+   * Filters and returns the events for a specific day.
+   * @param {number} day - The day of the month.
+   * @returns {CalendarEvent[]} A list of events for the given day.
+   */
+  function getEventsForDay(day: number) {
+    const dateStr = new Date(currentDate.getFullYear(), currentDate.getMonth(), day)
+      .toISOString()
+      .split('T')[0];
+    return events.filter(e => e.date === dateStr);
+  }
+
+  /**
+   * Navigates to the previous month in the calendar.
+   */
+  function previousMonth() {
+    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
+  }
+
+  /**
+   * Navigates to the next month in the calendar.
+   */
+  function nextMonth() {
+    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
+  }
+
+  /**
+   * Handles the click event on a calendar event, opening the appropriate modal for editing.
+   * @param {CalendarEvent} event - The clicked calendar event.
+   */
+  const handleEventClick = (event: CalendarEvent) => {
+    if (event.type === 'appointment') {
+        const appointment = {
+            id: event.id,
+            guest_id: '', // This needs to be fetched or passed along
+            title: event.title,
+            appointment_date: event.date,
+            appointment_time: event.time,
+            status: event.status || 'scheduled',
+            created_at: '' // This needs to be fetched or passed along
+        };
+        setSelectedAppointment(appointment);
+    } else if (event.type === 'reservation') {
+        const reservation = {
+            id: event.id,
+            guest_id: '', // This needs to be fetched or passed along
+            venue_name: event.title.split(' (')[0],
+            reservation_date: event.date,
+            reservation_time: event.time,
+            reservation_type: event.title.includes('requested') ? 'requested' : 'confirmed',
+            status: event.status || 'requested',
+            created_at: ''
+        };
+        setSelectedReservation(reservation);
+    } else if (event.type === 'event') {
+        const guestEvent = {
+            id: event.id,
+            guest_id: '', // This needs to be fetched or passed along
+            event_name: event.title,
+            event_date: event.date,
+            attended: event.attended || false,
+            created_at: ''
+        };
+        setSelectedEvent(guestEvent);
+    }
+  };
+
+  /**
+   * Closes all open modals.
+   */
+  const handleCloseModals = () => {
+    setSelectedAppointment(null);
+    setSelectedReservation(null);
+    setSelectedEvent(null);
+  };
+
+  /**
+   * Reloads the calendar data and closes any open modals after saving changes.
+   */
+  const handleSaveChanges = () => {
+    loadCalendarData();
+    handleCloseModals();
+  };
+
+  /**
+   * Reloads the calendar data and closes any open modals after deleting an event.
+   */
+  const handleDelete = () => {
+    loadCalendarData();
+    handleCloseModals();
+  };
+
+  const { daysInMonth, startingDayOfWeek } = getDaysInMonth(currentDate);
+  const monthName = currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+  // Render the calendar grid and event modals.
+  return (
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200 h-full flex flex-col">
+      <div className="p-4 border-b border-gray-200">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Calendar className="w-5 h-5 text-gray-700" />
+            <h2 className="text-lg font-semibold text-gray-900">{monthName}</h2>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={previousMonth}
+              className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+            <button
+              onClick={() => setCurrentDate(new Date())}
+              className="px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              Today
+            </button>
+            <button
+              onClick={nextMonth}
+              className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              <ChevronRight className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-4">
+        {loading ? (
+          <div className="flex items-center justify-center h-64">
+            <div className="text-gray-500">Loading calendar...</div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-7 gap-2">
+            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+              <div key={day} className="text-center text-sm font-semibold text-gray-700 py-2">
+                {day}
+              </div>
+            ))}
+
+            {Array.from({ length: startingDayOfWeek }, (_, i) => (
+              <div key={`empty-${i}`} className="min-h-24 bg-gray-50 rounded-lg"></div>
+            ))}
+
+            {Array.from({ length: daysInMonth }, (_, i) => {
+              const day = i + 1;
+              const dayEvents = getEventsForDay(day);
+              const isToday =
+                day === new Date().getDate() &&
+                currentDate.getMonth() === new Date().getMonth() &&
+                currentDate.getFullYear() === new Date().getFullYear();
+
+              return (
+                <div
+                  key={day}
+                  className={`min-h-24 p-2 border rounded-lg ${
+                    isToday ? 'border-blue-500 bg-blue-50' : 'border-gray-200 bg-white'
+                  }`}
+                >
+                  <div className={`text-sm font-semibold mb-1 ${isToday ? 'text-blue-700' : 'text-gray-900'}`}>
+                    {day}
+                  </div>
+                  <div className="space-y-1">
+                    {dayEvents.slice(0, 3).map(event => (
+                      <div
+                        key={event.id}
+                        onClick={() => handleEventClick(event)}
+                        className={`text-xs p-1 rounded truncate cursor-pointer ${
+                          event.type === 'appointment'
+                            ? 'bg-purple-100 text-purple-700'
+                            : event.type === 'reservation'
+                            ? 'bg-green-100 text-green-700'
+                            : 'bg-orange-100 text-orange-700'
+                        }`}
+                        title={`${event.title} - ${event.guestName} at ${event.time}`}
+                      >
+                        {event.time.slice(0, 5)} {event.title}
+                      </div>
+                    ))}
+                    {dayEvents.length > 3 && (
+                      <div className="text-xs text-gray-500 px-1">
+                        +{dayEvents.length - 3} more
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <div className="p-4 border-t border-gray-200 bg-gray-50">
+        <div className="flex items-center gap-4 text-sm">
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 bg-purple-100 border border-purple-300 rounded"></div>
+            <span className="text-gray-700">Appointments</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 bg-green-100 border border-green-300 rounded"></div>
+            <span className="text-gray-700">Reservations</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 bg-orange-100 border border-orange-300 rounded"></div>
+            <span className="text-gray-700">Events</span>
+          </div>
+        </div>
+      </div>
+      {selectedAppointment && (
+        <EditAppointmentModal 
+            appointment={selectedAppointment} 
+            onClose={handleCloseModals} 
+            onSave={handleSaveChanges} 
+            onDelete={handleDelete} 
+        />
+      )}
+      {selectedReservation && (
+        <EditReservationModal
+            reservation={selectedReservation}
+            onClose={handleCloseModals}
+            onSave={handleSaveChanges}
+            onDelete={handleDelete}
+        />
+      )}
+      {selectedEvent && (
+        <EditEventModal
+            event={selectedEvent}
+            onClose={.handleCloseModals}
+            onSave={handleSaveChanges}
+            onDelete={handleDelete}
+        />
+      )}
+    </div>
+  );
+}
