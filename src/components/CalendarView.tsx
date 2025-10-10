@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { supabase, Appointment, Reservation, GuestEvent } from '../lib/supabase';
 import { Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
+import EditEventModal from './EditEventModal'; // Import the generalized modal
 
 interface CalendarEvent {
   id: string;
@@ -16,6 +17,8 @@ export default function CalendarView() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
 
   const loadCalendarData = useCallback(async () => {
     try {
@@ -132,6 +135,17 @@ export default function CalendarView() {
     setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
   }
 
+  const handleEventClick = (event: CalendarEvent) => {
+    setSelectedEvent(event);
+    setIsModalOpen(true);
+  };
+
+  const handleCloseModal = () => {
+    setIsModalOpen(false);
+    setSelectedEvent(null);
+    loadCalendarData(); // Refresh data after modal closes
+  };
+
   const { daysInMonth, startingDayOfWeek } = getDaysInMonth(currentDate);
   const monthName = currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
@@ -205,7 +219,8 @@ export default function CalendarView() {
                     {dayEvents.slice(0, 3).map(event => (
                       <div
                         key={event.id}
-                        className={`text-xs p-1 rounded truncate ${
+                        onClick={() => handleEventClick(event)}
+                        className={`text-xs p-1 rounded truncate cursor-pointer ${
                           event.type === 'appointment'
                             ? 'bg-purple-100 text-purple-700'
                             : event.type === 'reservation'
@@ -246,6 +261,14 @@ export default function CalendarView() {
           </div>
         </div>
       </div>
+
+      {selectedEvent && (
+        <EditEventModal
+          isOpen={isModalOpen}
+          onClose={handleCloseModal}
+          event={selectedEvent}
+        />
+      )}
     </div>
   );
 }
