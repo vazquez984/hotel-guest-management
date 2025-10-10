@@ -1,139 +1,222 @@
+import React, { useState, useEffect } from 'react';
+import { supabase } from '../lib/supabase';
 
-import { supabase, GuestEvent } from '../lib/supabase';
-import { useState, useEffect } from 'react';
-
-/**
- * Props for the EditEventModal component.
- * @interface EditEventModalProps
- * @property {GuestEvent | null} event - The event object to edit. If null, the modal is not displayed.
- * @property {() => void} onClose - Function to call when the modal is closed.
- * @property {(updatedEvent: GuestEvent) => void} onSave - Function to call when the event is saved.
- * @property {(eventId: string) => void} onDelete - Function to call when the event is deleted.
- */
-interface EditEventModalProps {
-  event: GuestEvent | null;
-  onClose: () => void;
-  onSave: (updatedEvent: GuestEvent) => void;
-  onDelete: (eventId: string) => void;
+// Define the CalendarEvent interface
+interface CalendarEvent {
+  id: string;
+  type: 'appointment' | 'reservation' | 'event';
+  title: string;
+  date: string;
+  time: string;
+  guestName: string;
+  status?: string;
 }
 
-/**
- * A modal component for editing, creating, or deleting a guest event.
- * @param {EditEventModalProps} props - The props for the component.
- * @returns {JSX.Element | null} The rendered component or null if no event is provided.
- */
-export default function EditEventModal({ event, onClose, onSave, onDelete }: EditEventModalProps) {
-  // State to manage the form data for the event.
-  const [formData, setFormData] = useState<Partial<GuestEvent>>({});
+interface EditEventModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  event: CalendarEvent;
+}
 
-  // Effect to populate the form data when an event is selected.
+const EditEventModal: React.FC<EditEventModalProps> = ({ isOpen, onClose, event }) => {
+  const [formData, setFormData] = useState({ title: '', date: '', time: '', status: '' });
+
   useEffect(() => {
     if (event) {
-      setFormData(event);
+      setFormData({
+        title: event.title,
+        date: event.date,
+        time: event.time,
+        status: event.status || 'scheduled', // Default to 'scheduled' if status is not set
+      });
     }
   }, [event]);
 
-  // If no event is selected, do not render the modal.
-  if (!event) return null;
-
-  /**
-   * Handles changes to the form inputs and updates the form data state.
-   * @param {React.ChangeEvent<HTMLInputElement | HTMLSelectElement>} e - The change event.
-   */
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: name === 'attended' ? value === 'true' : value }));
+    setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  /**
-   * Handles saving the updated event data to the Supabase database.
-   */
+  const getTableName = () => {
+    switch (event.type) {
+      case 'appointment':
+        return 'appointments';
+      case 'reservation':
+        return 'reservations';
+      case 'event':
+        return 'guest_events';
+      default:
+        throw new Error('Invalid event type');
+    }
+  };
+
   const handleSave = async () => {
-    if (!formData.id) return;
+    if (!event) return;
 
-    // Supabase query to update the event.
-    const { data, error } = await supabase
-      .from('guest_events')
-      .update({
-        event_name: formData.event_name,
-        event_date: formData.event_date,
-        attended: formData.attended
-      })
-      .eq('id', formData.id)
-      .select();
+    const tableName = getTableName();
+    let updateData: any = {};
 
-    if (error) {
+    switch (event.type) {
+      case 'appointment':
+        updateData = {
+          title: formData.title,
+          appointment_date: formData.date,
+          appointment_time: formData.time,
+          status: formData.status,
+        };
+        break;
+      case 'reservation':
+        updateData = {
+          // Assuming title is in the format "Venue (Type)"
+          venue_name: formData.title.split(' (')[0],
+          reservation_date: formData.date,
+          reservation_time: formData.time,
+          status: formData.status,
+        };
+        break;
+      case 'event':
+        updateData = {
+          event_name: formData.title,
+          event_date: formData.date,
+          attended: formData.status === 'attended',
+        };
+        break;
+    }
+
+    try {
+      const { error } = await supabase.from(tableName).update(updateData).eq('id', event.id);
+      if (error) throw error;
+      onClose();
+    } catch (error) {
       console.error('Error updating event:', error);
-    } else if (data) {
-      // On successful save, trigger the onSave callback.
-      onSave(data[0] as GuestEvent);
     }
   };
 
-  /**
-   * Handles deleting the event from the Supabase database.
-   */
   const handleDelete = async () => {
-    if (!formData.id) return;
+    if (!event || !window.confirm('Are you sure you want to delete this event?')) {
+      return;
+    }
 
-    // Supabase query to delete the event.
-    const { error } = await supabase.from('guest_events').delete().eq('id', formData.id);
-    if (error) {
+    const tableName = getTableName();
+
+    try {
+      const { error } = await supabase.from(tableName).delete().eq('id', event.id);
+      if (error) throw error;
+      onClose();
+    } catch (error) {
       console.error('Error deleting event:', error);
-    } else {
-      // On successful deletion, trigger the onDelete callback.
-      onDelete(formData.id);
     }
   };
 
-  // Render the modal with a form for editing the event.
+  if (!isOpen) {
+    return null;
+  }
+
+  const getModalTitle = () => {
+    if (!event) return '';
+    switch (event.type) {
+      case 'appointment':
+        return 'Edit Appointment';
+      case 'reservation':
+        return 'Edit Reservation';
+      case 'event':
+        return 'Edit Event';
+    }
+  };
+
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center">
-      <div className="bg-white p-6 rounded-lg shadow-lg w-1/3">
-        <h2 className="text-2xl font-bold mb-4">Edit Event</h2>
-        <div className="space-y-4">
-          <div>
-            <label htmlFor="event_name" className="block text-sm font-medium text-gray-700">Event Name</label>
-            <input
-              type="text"
-              name="event_name"
-              id="event_name"
-              value={formData.event_name || ''}
-              onChange={handleChange}
-              className="mt-1 block w-full border-gray-300 rounded-md shadow-sm"
-            />
+    <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full">
+      <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+        <div className="mt-3">
+          <h3 className="text-lg leading-6 font-medium text-gray-900 text-center">{getModalTitle()}</h3>
+          <div className="mt-4">
+            <div className="mb-4">
+              <label htmlFor="title" className="block text-sm font-medium text-gray-700">Title</label>
+              <input
+                type="text"
+                name="title"
+                id="title"
+                value={formData.title}
+                onChange={handleInputChange}
+                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+              />
+            </div>
+            <div className="mb-4">
+              <label htmlFor="date" className="block text-sm font-medium text-gray-700">Date</label>
+              <input
+                type="date"
+                name="date"
+                id="date"
+                value={formData.date}
+                onChange={handleInputChange}
+                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+              />
+            </div>
+            {event.type !== 'event' && (
+              <div className="mb-4">
+                <label htmlFor="time" className="block text-sm font-medium text-gray-700">Time</label>
+                <input
+                  type="time"
+                  name="time"
+                  id="time"
+                  value={formData.time}
+                  onChange={handleInputChange}
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                />
+              </div>
+            )}
+            <div className="mb-4">
+              <label htmlFor="status" className="block text-sm font-medium text-gray-700">Status</label>
+              <select
+                name="status"
+                id="status"
+                value={formData.status}
+                onChange={handleInputChange}
+                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+              >
+                {event.type === 'event' ? (
+                  <>
+                    <option value="scheduled">Scheduled</option>
+                    <option value="attended">Attended</option>
+                  </>
+                ) : (
+                  <>
+                    <option value="scheduled">Scheduled</option>
+                    <option value="confirmed">Confirmed</option>
+                    <option value="completed">Completed</option>
+                    <option value="cancelled">Cancelled</option>
+                  </>
+                )}
+              </select>
+            </div>
           </div>
-          <div>
-            <label htmlFor="event_date" className="block text-sm font-medium text-gray-700">Date</label>
-            <input
-              type="date"
-              name="event_date"
-              id="event_date"
-              value={formData.event_date || ''}
-              onChange={handleChange}
-              className="mt-1 block w-full border-gray-300 rounded-md shadow-sm"
-            />
-          </div>
-          <div>
-            <label htmlFor="attended" className="block text-sm font-medium text-gray-700">Attended</label>
-            <select
-              name="attended"
-              id="attended"
-              value={formData.attended ? 'true' : 'false'}
-              onChange={handleChange}
-              className="mt-1 block w-full border-gray-300 rounded-md shadow-sm"
+          <div className="flex justify-end items-center px-4 py-3 space-x-2">
+            <button
+              type="button"
+              className="rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+              onClick={onClose}
             >
-              <option value="true">Attended</option>
-              <option value="false">Not Attended</option>
-            </select>
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              onClick={handleSave}
+            >
+              Save
+            </button>
+            <button
+              type="button"
+              className="rounded-md border border-transparent shadow-sm px-4 py-2 bg-red-600 text-base font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+              onClick={handleDelete}
+            >
+              Delete
+            </button>
           </div>
-        </div>
-        <div className="mt-6 flex justify-end space-x-4">
-          <button onClick={onClose} className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">Close</button>
-          <button onClick={handleDelete} className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700">Delete</button>
-          <button onClick={handleSave} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Save Changes</button>
         </div>
       </div>
     </div>
   );
-}
+};
+
+export default EditEventModal;

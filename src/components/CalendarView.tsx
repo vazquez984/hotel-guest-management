@@ -1,10 +1,7 @@
-
 import { useEffect, useState, useCallback } from 'react';
 import { supabase, Appointment, Reservation, GuestEvent } from '../lib/supabase';
 import { Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
-import EditAppointmentModal from './EditAppointmentModal';
-import EditReservationModal from './EditReservationModal';
-import EditEventModal from './EditEventModal';
+import EditEventModal from './EditEventModal'; // Import the generalized modal
 
 /**
  * Interface for a calendar event, which can be an appointment, reservation, or guest event.
@@ -16,7 +13,6 @@ import EditEventModal from './EditEventModal';
  * @property {string} time - The time of the event in HH:MM format.
  * @property {string} guestName - The name of the guest associated with the event.
  * @property {string} [status] - The status of the event (e.g., 'scheduled', 'confirmed').
- * @property {boolean} [attended] - Whether the guest attended the event.
  */
 interface CalendarEvent {
   id: string;
@@ -26,7 +22,6 @@ interface CalendarEvent {
   time: string;
   guestName: string;
   status?: string;
-  attended?: boolean;
 }
 
 /**
@@ -35,18 +30,11 @@ interface CalendarEvent {
  * @returns {JSX.Element} The rendered calendar view component.
  */
 export default function CalendarView() {
-  // State for the current date being displayed in the calendar.
   const [currentDate, setCurrentDate] = useState(new Date());
-  // State for the list of all events to be displayed.
   const [events, setEvents] = useState<CalendarEvent[]>([]);
-  // State to manage the loading status while fetching data.
   const [loading, setLoading] = useState(true);
-  // State to hold the currently selected appointment for editing.
-  const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
-  // State to hold the currently selected reservation for editing.
-  const [selectedReservation, setSelectedReservation] = useState<Reservation | null>(null);
-  // State to hold the currently selected event for editing.
-  const [selectedEvent, setSelectedEvent] = useState<GuestEvent | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
 
   /**
    * Fetches all calendar data (appointments, reservations, events) for the current month
@@ -122,7 +110,7 @@ export default function CalendarView() {
             date: evt.event_date,
             time: '00:00',
             guestName: guestMap.get(evt.guest_id) || 'Unknown',
-            attended: evt.attended
+            status: evt.attended ? 'attended' : 'scheduled'
           });
         }
       });
@@ -194,65 +182,14 @@ export default function CalendarView() {
    * @param {CalendarEvent} event - The clicked calendar event.
    */
   const handleEventClick = (event: CalendarEvent) => {
-    if (event.type === 'appointment') {
-        const appointment = {
-            id: event.id,
-            guest_id: '', // This needs to be fetched or passed along
-            title: event.title,
-            appointment_date: event.date,
-            appointment_time: event.time,
-            status: event.status || 'scheduled',
-            created_at: '' // This needs to be fetched or passed along
-        };
-        setSelectedAppointment(appointment);
-    } else if (event.type === 'reservation') {
-        const reservation = {
-            id: event.id,
-            guest_id: '', // This needs to be fetched or passed along
-            venue_name: event.title.split(' (')[0],
-            reservation_date: event.date,
-            reservation_time: event.time,
-            reservation_type: event.title.includes('requested') ? 'requested' : 'confirmed',
-            status: event.status || 'requested',
-            created_at: ''
-        };
-        setSelectedReservation(reservation);
-    } else if (event.type === 'event') {
-        const guestEvent = {
-            id: event.id,
-            guest_id: '', // This needs to be fetched or passed along
-            event_name: event.title,
-            event_date: event.date,
-            attended: event.attended || false,
-            created_at: ''
-        };
-        setSelectedEvent(guestEvent);
-    }
+    setSelectedEvent(event);
+    setIsModalOpen(true);
   };
 
-  /**
-   * Closes all open modals.
-   */
-  const handleCloseModals = () => {
-    setSelectedAppointment(null);
-    setSelectedReservation(null);
+  const handleCloseModal = () => {
+    setIsModalOpen(false);
     setSelectedEvent(null);
-  };
-
-  /**
-   * Reloads the calendar data and closes any open modals after saving changes.
-   */
-  const handleSaveChanges = () => {
-    loadCalendarData();
-    handleCloseModals();
-  };
-
-  /**
-   * Reloads the calendar data and closes any open modals after deleting an event.
-   */
-  const handleDelete = () => {
-    loadCalendarData();
-    handleCloseModals();
+    loadCalendarData(); // Refresh data after modal closes
   };
 
   const { daysInMonth, startingDayOfWeek } = getDaysInMonth(currentDate);
@@ -371,28 +308,12 @@ export default function CalendarView() {
           </div>
         </div>
       </div>
-      {selectedAppointment && (
-        <EditAppointmentModal 
-            appointment={selectedAppointment} 
-            onClose={handleCloseModals} 
-            onSave={handleSaveChanges} 
-            onDelete={handleDelete} 
-        />
-      )}
-      {selectedReservation && (
-        <EditReservationModal
-            reservation={selectedReservation}
-            onClose={handleCloseModals}
-            onSave={handleSaveChanges}
-            onDelete={handleDelete}
-        />
-      )}
+
       {selectedEvent && (
         <EditEventModal
-            event={selectedEvent}
-            onClose={.handleCloseModals}
-            onSave={handleSaveChanges}
-            onDelete={handleDelete}
+          isOpen={isModalOpen}
+          onClose={handleCloseModal}
+          event={selectedEvent}
         />
       )}
     </div>
