@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { supabase, Guest } from '../lib/supabase';
 import { Users, Plus, Search } from 'lucide-react';
+import { debounce } from 'lodash';
 
 interface GuestListProps {
   onSelectGuest: (guest: Guest) => void;
@@ -13,39 +14,40 @@ export default function GuestList({ onSelectGuest, onAddGuest, selectedGuestId }
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
 
-  useEffect(() => {
-    loadGuests();
-  }, []);
+  const debouncedLoadGuests = useMemo(
+    () =>
+      debounce(async (search: string) => {
+        try {
+          setLoading(true);
+          let query = supabase.from('guests').select('*');
 
-  async function loadGuests() {
-    try {
-      const { data, error } = await supabase
-        .from('guests')
-        .select('*')
-        .order('check_in_date', { ascending: false });
+          if (search) {
+            const searchIlke = `%${search.toLowerCase()}%`;
+            query = query.or(`family_name.ilike.${searchIlke},room_number.ilike.${searchIlke},country.ilike.${searchIlke}`);
+          }
+          
+          query = query.order('check_in_date', { ascending: false });
 
-      if (error) throw error;
-      setGuests(data || []);
-    } catch (error) {
-      console.error('Error loading guests:', error);
-    } finally {
-      setLoading(false);
-    }
-  }
+          const { data, error } = await query;
 
-  const filteredGuests = guests.filter(guest =>
-    guest.family_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    guest.room_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    guest.country.toLowerCase().includes(searchTerm.toLowerCase())
+          if (error) throw error;
+          setGuests(data || []);
+        } catch (error) {
+          console.error('Error loading guests:', error);
+        } finally {
+          setLoading(false);
+        }
+      }, 300), // 300ms delay
+    []
   );
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-gray-500">Loading guests...</div>
-      </div>
-    );
-  }
+  useEffect(() => {
+    debouncedLoadGuests(searchTerm);
+    // Cleanup function to cancel any pending debounced calls
+    return () => {
+      debouncedLoadGuests.cancel();
+    };
+  }, [searchTerm, debouncedLoadGuests]);
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 h-full flex flex-col">
@@ -76,13 +78,15 @@ export default function GuestList({ onSelectGuest, onAddGuest, selectedGuestId }
         </div>
       </div>
       <div className="flex-1 overflow-y-auto">
-        {filteredGuests.length === 0 ? (
+        {loading ? (
+          <div className="p-8 text-center text-gray-500">Loading...</div>
+        ) : guests.length === 0 ? (
           <div className="p-8 text-center text-gray-500">
             {searchTerm ? 'No guests found matching your search' : 'No guests yet. Add your first guest!'}
           </div>
         ) : (
           <div className="divide-y divide-gray-200">
-            {filteredGuests.map((guest) => (
+            {guests.map((guest) => (
               <button
                 key={guest.id}
                 onClick={() => onSelectGuest(guest)}

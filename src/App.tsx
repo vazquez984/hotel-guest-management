@@ -1,9 +1,11 @@
-import { useState } from 'react';
+import { useState, Suspense, lazy } from 'react';
 import { Guest } from './lib/supabase';
-import GuestList from './components/GuestList';
-import GuestDetail from './components/GuestDetail';
-import CalendarView from './components/CalendarView';
 import { Hotel, Calendar } from 'lucide-react';
+import LoadingSpinner from './components/LoadingSpinner';
+
+const GuestList = lazy(() => import('./components/GuestList'));
+const GuestDetail = lazy(() => import('./components/GuestDetail'));
+const CalendarView = lazy(() => import('./components/CalendarView'));
 
 type View = 'guests' | 'calendar';
 
@@ -74,39 +76,41 @@ function App() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {currentView === 'calendar' ? (
-          <div className="h-[calc(100vh-200px)]">
-            <CalendarView />
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-[calc(100vh-200px)]">
-            <div className="h-full" key={refreshTrigger}>
-              <GuestList
-                onSelectGuest={handleSelectGuest}
-                onAddGuest={handleAddGuest}
-                selectedGuestId={selectedGuest?.id || null}
-              />
+        <Suspense fallback={<LoadingSpinner />}>
+          {currentView === 'calendar' ? (
+            <div className="h-[calc(100vh-200px)]">
+              <CalendarView />
             </div>
-            <div className="h-full">
-              {(selectedGuest || isNewGuest) ? (
-                <GuestDetail
-                  guest={selectedGuest}
-                  onClose={handleCloseDetail}
-                  onUpdate={handleUpdate}
-                  isNew={isNewGuest}
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-[calc(100vh-200px)]">
+              <div className="h-full" key={refreshTrigger}>
+                <GuestList
+                  onSelectGuest={handleSelectGuest}
+                  onAddGuest={handleAddGuest}
+                  selectedGuestId={selectedGuest?.id || null}
                 />
-              ) : (
-                <div className="bg-white rounded-lg shadow-sm border border-gray-200 h-full flex items-center justify-center">
-                  <div className="text-center text-gray-500">
-                    <Hotel className="w-12 h-12 mx-auto mb-3 text-gray-400" />
-                    <p>Select a guest to view details</p>
-                    <p className="text-sm mt-1">or add a new guest to get started</p>
+              </div>
+              <div className="h-full">
+                {(selectedGuest || isNewGuest) ? (
+                  <GuestDetail
+                    guest={selectedGuest}
+                    onClose={handleCloseDetail}
+                    onUpdate={handleUpdate}
+                    isNew={isNewGuest}
+                  />
+                ) : (
+                  <div className="bg-white rounded-lg shadow-sm border border-gray-200 h-full flex items-center justify-center">
+                    <div className="text-center text-gray-500">
+                      <Hotel className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+                      <p>Select a guest to view details</p>
+                      <p className="text-sm mt-1">or add a new guest to get started</p>
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </Suspense>
       </main>
     </div>
   );
