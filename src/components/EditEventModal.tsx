@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { supabase } from '../lib/supabase';
 
 // Define the CalendarEvent interface
@@ -18,19 +18,26 @@ interface EditEventModalProps {
   event: CalendarEvent;
 }
 
-const EditEventModal: React.FC<EditEventModalProps> = ({ isOpen, onClose, event }) => {
-  const [formData, setFormData] = useState({ title: '', date: '', time: '', status: '' });
+type UpdateData = {
+    title?: string;
+    appointment_date?: string;
+    appointment_time?: string;
+    status?: string;
+    venue_name?: string;
+    reservation_date?: string;
+    reservation_time?: string;
+    event_name?: string;
+    event_date?: string;
+    attended?: boolean;
+};
 
-  useEffect(() => {
-    if (event) {
-      setFormData({
-        title: event.title,
-        date: event.date,
-        time: event.time,
-        status: event.status || 'scheduled', // Default to 'scheduled' if status is not set
-      });
-    }
-  }, [event]);
+const EditEventModal: React.FC<EditEventModalProps> = ({ isOpen, onClose, event }) => {
+  const [formData, setFormData] = useState({
+    title: event.title,
+    date: event.date,
+    time: event.time,
+    status: event.status || 'scheduled', // Default to 'scheduled' if status is not set
+  });
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -54,7 +61,7 @@ const EditEventModal: React.FC<EditEventModalProps> = ({ isOpen, onClose, event 
     if (!event) return;
 
     const tableName = getTableName();
-    let updateData: any = {};
+    let updateData: UpdateData = {};
 
     switch (event.type) {
       case 'appointment':

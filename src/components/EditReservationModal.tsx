@@ -1,6 +1,6 @@
 
 import { supabase, Reservation } from '../lib/supabase';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 
 /**
  * Props for the EditReservationModal component.
@@ -24,14 +24,7 @@ interface EditReservationModalProps {
  */
 export default function EditReservationModal({ reservation, onClose, onSave, onDelete }: EditReservationModalProps) {
   // State to manage the form data for the reservation.
-  const [formData, setFormData] = useState<Partial<Reservation>>({});
-
-  // Effect to populate the form data when a reservation is selected.
-  useEffect(() => {
-    if (reservation) {
-      setFormData(reservation);
-    }
-  }, [reservation]);
+  const [formData, setFormData] = useState<Partial<Reservation>>(reservation || {});
 
   // If no reservation is selected, do not render the modal.
   if (!reservation) return null;

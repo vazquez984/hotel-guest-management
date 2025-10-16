@@ -1,6 +1,6 @@
 
 import { supabase, Appointment } from '../lib/supabase';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 
 interface EditAppointmentModalProps {
   appointment: Appointment | null;
@@ -10,13 +10,7 @@ interface EditAppointmentModalProps {
 }
 
 export default function EditAppointmentModal({ appointment, onClose, onSave, onDelete }: EditAppointmentModalProps) {
-  const [formData, setFormData] = useState<Partial<Appointment>>({});
-
-  useEffect(() => {
-    if (appointment) {
-      setFormData(appointment);
-    }
-  }, [appointment]);
+  const [formData, setFormData] = useState<Partial<Appointment>>(appointment || {});
 
   if (!appointment) return null;
 
