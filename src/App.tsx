@@ -3,15 +3,16 @@ import { Guest } from './lib/supabase';
 import GuestList from './components/GuestList';
 import GuestDetail from './components/GuestDetail';
 import CalendarView from './components/CalendarView';
-import { Hotel, Calendar } from 'lucide-react';
+import Dashboard from './components/Dashboard';
+import { Hotel, Calendar, BarChart } from 'lucide-react';
 
-type View = 'guests' | 'calendar';
+type View = 'guests' | 'calendar' | 'dashboard';
 
 function App() {
   const [selectedGuest, setSelectedGuest] = useState<Guest | null>(null);
   const [isNewGuest, setIsNewGuest] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
-  const [currentView, setCurrentView] = useState<View>('guests');
+  const [currentView, setCurrentView] = useState<View>('dashboard');
 
   function handleSelectGuest(guest: Guest) {
     setSelectedGuest(guest);
@@ -47,6 +48,17 @@ function App() {
             </div>
             <nav className="flex items-center gap-2">
               <button
+                onClick={() => setCurrentView('dashboard')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
+                  currentView === 'dashboard'
+                    ? 'bg-blue-100 text-blue-700'
+                    : 'text-gray-600 hover:bg-gray-100'
+                }`}
+              >
+                <BarChart className="w-4 h-4" />
+                Dashboard
+              </button>
+              <button
                 onClick={() => setCurrentView('guests')}
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
                   currentView === 'guests'
@@ -74,7 +86,9 @@ function App() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {currentView === 'calendar' ? (
+        {currentView === 'dashboard' ? (
+          <Dashboard />
+        ) : currentView === 'calendar' ? (
           <div className="h-[calc(100vh-200px)]">
             <CalendarView />
           </div>
