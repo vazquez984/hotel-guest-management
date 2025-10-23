@@ -54,43 +54,93 @@ const EditEventModal: React.FC<EditEventModalProps> = ({ isOpen, onClose, event 
     if (!event) return;
 
     const tableName = getTableName();
+    const originalStatus = event.status;
+    const newStatus = formData.status;
+
     let updateData: any = {};
 
+    // Prepare data for the primary update
     switch (event.type) {
-      case 'appointment':
-        updateData = {
-          title: formData.title,
-          appointment_date: formData.date,
-          appointment_time: formData.time,
-          status: formData.status,
-        };
-        break;
-      case 'reservation':
-        updateData = {
-          // Assuming title is in the format "Venue (Type)"
-          venue_name: formData.title.split(' (')[0],
-          reservation_date: formData.date,
-          reservation_time: formData.time,
-          status: formData.status,
-        };
-        break;
-      case 'event':
-        updateData = {
-          event_name: formData.title,
-          event_date: formData.date,
-          attended: formData.status === 'attended',
-        };
-        break;
+        case 'appointment':
+            updateData = {
+                title: formData.title,
+                appointment_date: formData.date,
+                appointment_time: formData.time,
+                status: newStatus,
+            };
+            break;
+        case 'reservation':
+            updateData = {
+                venue_name: formData.title.split(' (')[0],
+                reservation_date: formData.date,
+                reservation_time: formData.time,
+                status: newStatus,
+            };
+            break;
+        case 'event':
+            updateData = {
+                event_name: formData.title,
+                event_date: formData.date,
+                attended: newStatus === 'attended',
+            };
+            break;
     }
 
     try {
-      const { error } = await supabase.from(tableName).update(updateData).eq('id', event.id);
-      if (error) throw error;
-      onClose();
+        // 1. Update the event itself
+        const { error: updateError } = await supabase.from(tableName).update(updateData).eq('id', event.id);
+        if (updateError) throw updateError;
+
+        // 2. If it's an appointment, handle the sales logic
+        if (event.type === 'appointment' && originalStatus !== newStatus) {
+            const isNowCompleted = newStatus === 'completed';
+
+            // Fetch the appointment to get the guest_id
+            const { data: appointmentData, error: appointmentError } = await supabase
+                .from('appointments')
+                .select('guest_id')
+                .eq('id', event.id)
+                .single();
+
+            if (appointmentError || !appointmentData) {
+                throw new Error('Could not find the appointment to update sales status.');
+            }
+
+            const { guest_id } = appointmentData;
+
+            // Find an existing sales record for the guest
+            const { data: saleData, error: saleError } = await supabase
+                .from('sales')
+                .select('id')
+                .eq('guest_id', guest_id)
+                .maybeSingle();
+
+            if (saleError) throw saleError;
+
+            const newAttendedStatus = isNowCompleted;
+
+            if (saleData) {
+                // If a sales record exists, update it
+                const { error: updateSaleError } = await supabase
+                    .from('sales')
+                    .update({ attended_presentation: newAttendedStatus })
+                    .eq('id', saleData.id);
+                if (updateSaleError) throw updateSaleError;
+            } else if (isNowCompleted) {
+                // If no record exists and the appointment is completed, create one
+                const { error: insertSaleError } = await supabase
+                    .from('sales')
+                    .insert({ guest_id: guest_id, attended_presentation: true });
+                if (insertSaleError) throw insertSaleError;
+            }
+        }
+
+        onClose(); // Close modal on success
     } catch (error) {
-      console.error('Error updating event:', error);
+        console.error('Error during save operation:', error);
+        // Optionally, show an error message to the user
     }
-  };
+};
 
   const handleDelete = async () => {
     if (!event || !window.confirm('Are you sure you want to delete this event?')) {
