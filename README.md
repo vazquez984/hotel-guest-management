@@ -622,7 +622,7 @@ npm run typecheck
 
 ### Getting Help
 
-- 📧 **Email**: support@yourhotel.com
+- 📧 **Email**: antonio984vs@gmail.com
 - 🐛 **Issues**: [GitHub Issues](https://github.com/vazquez984/hotel-guest-management/issues)
 - 💬 **Discussions**: [GitHub Discussions](https://github.com/vazquez984/hotel-guest-management/discussions)
 
