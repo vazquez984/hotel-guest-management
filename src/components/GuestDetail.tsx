@@ -1,6 +1,10 @@
 import { useEffect, useState, useCallback } from 'react';
 import { supabase, Guest, GuestEvent, Appointment, Sale, Reservation } from '../lib/supabase';
 import { User, Calendar, DollarSign, Utensils, X, Save, Edit, Trash2 } from 'lucide-react';
+import toast from 'react-hot-toast';
+import { validateGuest, validateAppointment, validateReservation, validateSale, validateEvent } from '../utils/guestValidation';
+import ErrorMessage, { ErrorBanner } from './common/ErrorMessage';
+import { ValidationError } from '../utils/validation';
 
 interface GuestDetailProps {
   guest: Guest | null;
@@ -22,7 +26,8 @@ export default function GuestDetail({ guest, onClose, onUpdate, isNew = false }:
     check_out_date: '',
     notes: ''
   });
-
+  
+  const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
   const [events, setEvents] = useState<GuestEvent[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
@@ -68,6 +73,7 @@ export default function GuestDetail({ guest, onClose, onUpdate, isNew = false }:
       setReservations(reservationsRes.data || []);
     } catch (error) {
       console.error('Error loading guest data:', error);
+      toast.error('Failed to load guest data');
     }
   }, [guest]);
 
@@ -79,18 +85,33 @@ export default function GuestDetail({ guest, onClose, onUpdate, isNew = false }:
   }, [guest, loadGuestData]);
 
   async function handleSave() {
+    // Validar datos del formulario
+    const validation = validateGuest(formData);
+    
+    if (!validation.isValid) {
+      setValidationErrors(validation.errors);
+      toast.error('Please fix the errors before saving');
+      return;
+    }
+    
+    // Limpiar errores si la validación es exitosa
+    setValidationErrors([]);
+    
     try {
       if (isNew) {
         const { error } = await supabase.from('guests').insert([formData]);
         if (error) throw error;
+        toast.success('Guest added successfully!');
       } else if (guest) {
         const { error } = await supabase.from('guests').update(formData).eq('id', guest.id);
         if (error) throw error;
+        toast.success('Guest updated successfully!');
       }
       setEditing(false);
       onUpdate();
     } catch (error) {
       console.error('Error saving guest:', error);
+      toast.error('Failed to save guest');
     }
   }
 
@@ -100,23 +121,34 @@ export default function GuestDetail({ guest, onClose, onUpdate, isNew = false }:
     try {
       const { error } = await supabase.from('guests').delete().eq('id', guest.id);
       if (error) throw error;
+      toast.success('Guest deleted successfully');
       onUpdate();
       onClose();
     } catch (error) {
       console.error('Error deleting guest:', error);
+      toast.error('Failed to delete guest');
     }
   }
 
   async function addEvent() {
-    if (!guest || !newEvent.event_name) return;
+    if (!guest) return;
+    
+    // Validar evento
+    const validation = validateEvent(newEvent);
+    if (!validation.isValid) {
+      validation.errors.forEach(error => toast.error(error.message));
+      return;
+    }
 
     try {
       const { error } = await supabase.from('guest_events').insert([{ ...newEvent, guest_id: guest.id }]);
       if (error) throw error;
       setNewEvent({ event_name: '', has_access: true, event_date: '' });
+      toast.success('Event added successfully!');
       loadGuestData();
     } catch (error) {
       console.error('Error adding event:', error);
+      toast.error('Failed to add event');
     }
   }
 
@@ -124,48 +156,77 @@ export default function GuestDetail({ guest, onClose, onUpdate, isNew = false }:
     try {
       const { error } = await supabase.from('guest_events').update({ attended }).eq('id', eventId);
       if (error) throw error;
+      toast.success(attended ? 'Marked as attended' : 'Marked as not attended');
       loadGuestData();
     } catch (error) {
       console.error('Error updating event:', error);
+      toast.error('Failed to update event');
     }
   }
 
   async function addAppointment() {
-    if (!guest || !newAppointment.appointment_date) return;
+    if (!guest) return;
+    
+    // Validar cita
+    const validation = validateAppointment(newAppointment);
+    if (!validation.isValid) {
+      validation.errors.forEach(error => toast.error(error.message));
+      return;
+    }
 
     try {
       const { error } = await supabase.from('appointments').insert([{ ...newAppointment, guest_id: guest.id }]);
       if (error) throw error;
       setNewAppointment({ title: 'Presentation', appointment_date: '', appointment_time: '10:00', location: '' });
+      toast.success('Appointment added successfully!');
       loadGuestData();
     } catch (error) {
       console.error('Error adding appointment:', error);
+      toast.error('Failed to add appointment');
     }
   }
 
   async function addSale() {
     if (!guest) return;
+    
+    // Validar venta
+    const validation = validateSale(newSale);
+    if (!validation.isValid) {
+      validation.errors.forEach(error => toast.error(error.message));
+      return;
+    }
 
     try {
       const { error } = await supabase.from('sales').insert([{ ...newSale, guest_id: guest.id }]);
       if (error) throw error;
       setNewSale({ attended_presentation: false, made_purchase: false, purchase_amount: 0, purchase_date: '', payment_method: '' });
+      toast.success('Sale record added successfully!');
       loadGuestData();
     } catch (error) {
       console.error('Error adding sale:', error);
+      toast.error('Failed to add sale record');
     }
   }
 
   async function addReservation() {
-    if (!guest || !newReservation.venue_name || !newReservation.reservation_date) return;
+    if (!guest) return;
+    
+    // Validar reservación
+    const validation = validateReservation(newReservation);
+    if (!validation.isValid) {
+      validation.errors.forEach(error => toast.error(error.message));
+      return;
+    }
 
     try {
       const { error } = await supabase.from('reservations').insert([{ ...newReservation, guest_id: guest.id }]);
       if (error) throw error;
       setNewReservation({ reservation_type: 'restaurant', venue_name: '', reservation_date: '', reservation_time: '19:00', party_size: 2, status: 'pending' });
+      toast.success('Reservation added successfully!');
       loadGuestData();
     } catch (error) {
       console.error('Error adding reservation:', error);
+      toast.error('Failed to add reservation');
     }
   }
 
@@ -186,12 +247,14 @@ export default function GuestDetail({ guest, onClose, onUpdate, isNew = false }:
               <button
                 onClick={() => setEditing(true)}
                 className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                aria-label="Edit guest"
               >
                 <Edit className="w-4 h-4" />
               </button>
               <button
                 onClick={handleDelete}
                 className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                aria-label="Delete guest"
               >
                 <Trash2 className="w-4 h-4" />
               </button>
@@ -200,6 +263,7 @@ export default function GuestDetail({ guest, onClose, onUpdate, isNew = false }:
           <button
             onClick={onClose}
             className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+            aria-label="Close"
           >
             <X className="w-4 h-4" />
           </button>
@@ -212,101 +276,179 @@ export default function GuestDetail({ guest, onClose, onUpdate, isNew = false }:
             <User className="w-4 h-4" />
             Guest Information
           </h3>
+          
+          {/* Mostrar banner de errores si hay errores de validación */}
+          {editing && validationErrors.length > 0 && (
+            <ErrorBanner errors={validationErrors} />
+          )}
+          
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Family Name</label>
+              <label htmlFor="family_name" className="block text-sm font-medium text-gray-700 mb-1">
+                Family Name *
+              </label>
               <input
+                id="family_name"
                 type="text"
                 value={formData.family_name}
                 onChange={(e) => setFormData({ ...formData, family_name: e.target.value })}
                 disabled={!editing}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50"
+                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 ${
+                  validationErrors.some(e => e.field === 'Family name') ? 'border-red-300' : 'border-gray-300'
+                }`}
+                placeholder="Enter family name"
               />
+              <ErrorMessage field="Family name" errors={validationErrors} />
             </div>
+            
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Room Number</label>
+              <label htmlFor="room_number" className="block text-sm font-medium text-gray-700 mb-1">
+                Room Number *
+              </label>
               <input
+                id="room_number"
                 type="text"
                 value={formData.room_number}
                 onChange={(e) => setFormData({ ...formData, room_number: e.target.value })}
                 disabled={!editing}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50"
+                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 ${
+                  validationErrors.some(e => e.field === 'Room number') ? 'border-red-300' : 'border-gray-300'
+                }`}
+                placeholder="e.g., 101"
               />
+              <ErrorMessage field="Room number" errors={validationErrors} />
             </div>
+            
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Number of Guests</label>
+              <label htmlFor="pax" className="block text-sm font-medium text-gray-700 mb-1">
+                Number of Guests *
+              </label>
               <input
+                id="pax"
                 type="number"
                 value={formData.pax}
-                onChange={(e) => setFormData({ ...formData, pax: parseInt(e.target.value) })}
+                onChange={(e) => setFormData({ ...formData, pax: parseInt(e.target.value) || 0 })}
                 disabled={!editing}
                 min="1"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50"
+                max="20"
+                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 ${
+                  validationErrors.some(e => e.field === 'Number of guests') ? 'border-red-300' : 'border-gray-300'
+                }`}
               />
+              <ErrorMessage field="Number of guests" errors={validationErrors} />
             </div>
+            
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Country</label>
+              <label htmlFor="country" className="block text-sm font-medium text-gray-700 mb-1">
+                Country *
+              </label>
               <input
+                id="country"
                 type="text"
                 value={formData.country}
                 onChange={(e) => setFormData({ ...formData, country: e.target.value })}
                 disabled={!editing}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50"
+                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 ${
+                  validationErrors.some(e => e.field === 'Country') ? 'border-red-300' : 'border-gray-300'
+                }`}
+                placeholder="e.g., USA"
               />
+              <ErrorMessage field="Country" errors={validationErrors} />
             </div>
+            
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Agency</label>
+              <label htmlFor="agency" className="block text-sm font-medium text-gray-700 mb-1">
+                Agency
+              </label>
               <input
+                id="agency"
                 type="text"
                 value={formData.agency}
                 onChange={(e) => setFormData({ ...formData, agency: e.target.value })}
                 disabled={!editing}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50"
+                placeholder="e.g., Expedia"
               />
             </div>
+            
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Number of Nights</label>
+              <label htmlFor="nights" className="block text-sm font-medium text-gray-700 mb-1">
+                Number of Nights *
+              </label>
               <input
+                id="nights"
                 type="number"
                 value={formData.nights}
-                onChange={(e) => setFormData({ ...formData, nights: parseInt(e.target.value) })}
+                onChange={(e) => setFormData({ ...formData, nights: parseInt(e.target.value) || 0 })}
                 disabled={!editing}
                 min="1"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50"
+                max="365"
+                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 ${
+                  validationErrors.some(e => e.field === 'Number of nights') ? 'border-red-300' : 'border-gray-300'
+                }`}
               />
+              <ErrorMessage field="Number of nights" errors={validationErrors} />
             </div>
+            
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Check-in Date</label>
+              <label htmlFor="check_in_date" className="block text-sm font-medium text-gray-700 mb-1">
+                Check-in Date *
+              </label>
               <input
+                id="check_in_date"
                 type="date"
                 value={formData.check_in_date}
                 onChange={(e) => setFormData({ ...formData, check_in_date: e.target.value })}
                 disabled={!editing}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50"
+                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 ${
+                  validationErrors.some(e => e.field === 'Check-in date') ? 'border-red-300' : 'border-gray-300'
+                }`}
               />
+              <ErrorMessage field="Check-in date" errors={validationErrors} />
             </div>
+            
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Check-out Date</label>
+              <label htmlFor="check_out_date" className="block text-sm font-medium text-gray-700 mb-1">
+                Check-out Date
+              </label>
               <input
+                id="check_out_date"
                 type="date"
                 value={formData.check_out_date || ''}
                 onChange={(e) => setFormData({ ...formData, check_out_date: e.target.value })}
                 disabled={!editing}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50"
+                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 ${
+                  validationErrors.some(e => e.field === 'Check-out date') ? 'border-red-300' : 'border-gray-300'
+                }`}
               />
+              <ErrorMessage field="Check-out date" errors={validationErrors} />
             </div>
+            
             <div className="col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+              <label htmlFor="notes" className="block text-sm font-medium text-gray-700 mb-1">
+                Notes
+              </label>
               <textarea
+                id="notes"
                 value={formData.notes}
                 onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                 disabled={!editing}
                 rows={3}
+                maxLength={1000}
                 placeholder="Birthdays, anniversaries, special preferences..."
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50"
+                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 ${
+                  validationErrors.some(e => e.field === 'Notes') ? 'border-red-300' : 'border-gray-300'
+                }`}
               />
+              <div className="flex justify-between items-center">
+                <ErrorMessage field="Notes" errors={validationErrors} />
+                <span className="text-xs text-gray-500 mt-1">
+                  {formData.notes?.length || 0}/1000
+                </span>
+              </div>
             </div>
           </div>
+          
           {editing && (
             <div className="flex gap-2">
               <button
@@ -320,6 +462,7 @@ export default function GuestDetail({ guest, onClose, onUpdate, isNew = false }:
                 <button
                   onClick={() => {
                     setEditing(false);
+                    setValidationErrors([]);
                     setFormData(guest!);
                   }}
                   className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
@@ -333,6 +476,7 @@ export default function GuestDetail({ guest, onClose, onUpdate, isNew = false }:
 
         {!isNew && (
           <>
+            {/* Events Section */}
             <section className="space-y-4">
               <h3 className="font-semibold text-gray-900 flex items-center gap-2">
                 <Calendar className="w-4 h-4" />
@@ -364,7 +508,7 @@ export default function GuestDetail({ guest, onClose, onUpdate, isNew = false }:
               <div className="grid grid-cols-3 gap-2">
                 <input
                   type="text"
-                  placeholder="Event name"
+                  placeholder="Event name *"
                   value={newEvent.event_name}
                   onChange={(e) => setNewEvent({ ...newEvent, event_name: e.target.value })}
                   className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -384,6 +528,7 @@ export default function GuestDetail({ guest, onClose, onUpdate, isNew = false }:
               </div>
             </section>
 
+            {/* Appointments Section */}
             <section className="space-y-4">
               <h3 className="font-semibold text-gray-900 flex items-center gap-2">
                 <Calendar className="w-4 h-4" />
@@ -414,7 +559,7 @@ export default function GuestDetail({ guest, onClose, onUpdate, isNew = false }:
               <div className="grid grid-cols-4 gap-2">
                 <input
                   type="text"
-                  placeholder="Title"
+                  placeholder="Title *"
                   value={newAppointment.title}
                   onChange={(e) => setNewAppointment({ ...newAppointment, title: e.target.value })}
                   className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -440,6 +585,7 @@ export default function GuestDetail({ guest, onClose, onUpdate, isNew = false }:
               </div>
             </section>
 
+            {/* Sales Section */}
             <section className="space-y-4">
               <h3 className="font-semibold text-gray-900 flex items-center gap-2">
                 <DollarSign className="w-4 h-4" />
@@ -494,9 +640,11 @@ export default function GuestDetail({ guest, onClose, onUpdate, isNew = false }:
                   <div className="grid grid-cols-3 gap-2">
                     <input
                       type="number"
-                      placeholder="Amount"
+                      placeholder="Amount *"
+                      min="0"
+                      step="0.01"
                       value={newSale.purchase_amount}
-                      onChange={(e) => setNewSale({ ...newSale, purchase_amount: parseFloat(e.target.value) })}
+                      onChange={(e) => setNewSale({ ...newSale, purchase_amount: parseFloat(e.target.value) || 0 })}
                       className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
                     <input
@@ -523,6 +671,7 @@ export default function GuestDetail({ guest, onClose, onUpdate, isNew = false }:
               </div>
             </section>
 
+            {/* Reservations Section */}
             <section className="space-y-4">
               <h3 className="font-semibold text-gray-900 flex items-center gap-2">
                 <Utensils className="w-4 h-4" />
@@ -571,7 +720,7 @@ export default function GuestDetail({ guest, onClose, onUpdate, isNew = false }:
                   </select>
                   <input
                     type="text"
-                    placeholder="Venue name"
+                    placeholder="Venue name *"
                     value={newReservation.venue_name}
                     onChange={(e) => setNewReservation({ ...newReservation, venue_name: e.target.value })}
                     className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"

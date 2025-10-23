@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
+import toast from 'react-hot-toast';
 import { supabase, Appointment, Reservation, GuestEvent } from '../lib/supabase';
 import { Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
 import EditEventModal from './EditEventModal'; // Import the generalized modal
@@ -100,6 +101,7 @@ export default function CalendarView() {
       setEvents(calendarEvents);
     } catch (error) {
       console.error('Error loading calendar data:', error);
+      toast.error('Failed to load calendar data. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -222,10 +224,10 @@ export default function CalendarView() {
                         onClick={() => handleEventClick(event)}
                         className={`text-xs p-1 rounded truncate cursor-pointer ${
                           event.type === 'appointment'
-                            ? 'bg-purple-100 text-purple-700'
+                            ? 'bg-indigo-100 text-indigo-700'
                             : event.type === 'reservation'
-                            ? 'bg-green-100 text-green-700'
-                            : 'bg-orange-100 text-orange-700'
+                            ? 'bg-pink-100 text-pink-700'
+                            : 'bg-amber-100 text-amber-700'
                         }`}
                         title={`${event.title} - ${event.guestName} at ${event.time}`}
                       >
@@ -248,15 +250,15 @@ export default function CalendarView() {
       <div className="p-4 border-t border-gray-200 bg-gray-50">
         <div className="flex items-center gap-4 text-sm">
           <div className="flex items-center gap-2">
-            <div className="w-3 h-3 bg-purple-100 border border-purple-300 rounded"></div>
+            <div className="w-3 h-3 bg-indigo-100 border border-indigo-300 rounded"></div>
             <span className="text-gray-700">Appointments</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-3 h-3 bg-green-100 border border-green-300 rounded"></div>
+            <div className="w-3 h-3 bg-pink-100 border border-pink-300 rounded"></div>
             <span className="text-gray-700">Reservations</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-3 h-3 bg-orange-100 border border-orange-300 rounded"></div>
+            <div className="w-3 h-3 bg-amber-100 border border-amber-300 rounded"></div>
             <span className="text-gray-700">Events</span>
           </div>
         </div>
