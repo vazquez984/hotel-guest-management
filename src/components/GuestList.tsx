@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import toast from 'react-hot-toast';
 import { supabase, Guest } from '../lib/supabase';
 import { Users, Plus, Search } from 'lucide-react';
 
@@ -28,6 +29,7 @@ export default function GuestList({ onSelectGuest, onAddGuest, selectedGuestId }
       setGuests(data || []);
     } catch (error) {
       console.error('Error loading guests:', error);
+      toast.error('Failed to load guests. Please try again.');
     } finally {
       setLoading(false);
     }
